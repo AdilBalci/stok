@@ -1,10 +1,10 @@
 // Configuration
 const CONFIG = {
   N8N_WEBHOOK_URL: window.location.hostname === 'localhost'
-    ? 'http://localhost:5678/webhook/ses-kayit'
+    ? 'http://localhost:3001/webhook/ses-kayit'  // Mock API
     : 'https://YOUR-N8N-URL/webhook/ses-kayit',
   LOGIN_WEBHOOK_URL: window.location.hostname === 'localhost'
-    ? 'http://localhost:5678/webhook/login'
+    ? 'http://localhost:3001/webhook/login'  // Mock API
     : 'https://YOUR-N8N-URL/webhook/login',
   MAX_RECORDING_TIME: 180000, // 3 dakika (ms)
 };
