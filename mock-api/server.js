@@ -1,37 +1,76 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const path = require('path');
+const { google } = require('googleapis');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Multer setup for file uploads
+// Multer setup
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
-// Mock PIN database
+// PIN database
 const PINS = {
-  'merkez': '123456',
-  'sube-kadikoy': '234567',
-  'sube-besiktas': '345678',
-  'sube-sisli': '456789',
-  'sube-uskudar': '567890',
-  'sube-bakirkoy': '678901'
+  'merkez': process.env.PIN_MERKEZ || '123456',
+  'sube-kadikoy': process.env.PIN_KADIKOY || '234567',
+  'sube-besiktas': process.env.PIN_BESIKTAS || '345678',
+  'sube-sisli': process.env.PIN_SISLI || '456789',
+  'sube-uskudar': process.env.PIN_USKUDAR || '567890',
+  'sube-bakirkoy': process.env.PIN_BAKIRKOY || '678901'
 };
+
+// Şube column mapping (Google Sheets columns)
+const SUBE_COLUMNS = {
+  'merkez': 'B',
+  'sube-kadikoy': 'C',
+  'sube-besiktas': 'D',
+  'sube-sisli': 'E',
+  'sube-uskudar': 'F',
+  'sube-bakirkoy': 'G'
+};
+
+// Şube display names
+const SUBE_NAMES = {
+  'merkez': 'Merkez',
+  'sube-kadikoy': 'Kadıköy',
+  'sube-besiktas': 'Beşiktaş',
+  'sube-sisli': 'Şişli',
+  'sube-uskudar': 'Üsküdar',
+  'sube-bakirkoy': 'Bakırköy'
+};
+
+// Google Sheets setup
+let sheetsClient = null;
+try {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: process.env.GOOGLE_CREDENTIALS_PATH,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+  sheetsClient = google.sheets({ version: 'v4', auth });
+  console.log('✅ Google Sheets API initialized');
+} catch (error) {
+  console.error('❌ Google Sheets API initialization failed:', error.message);
+}
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    service: 'mock-api'
+    service: 'stok-api',
+    features: {
+      googleSheets: !!sheetsClient,
+      openRouter: !!process.env.OPENROUTER_API_KEY
+    }
   });
 });
 
@@ -39,9 +78,8 @@ app.get('/health', (req, res) => {
 app.post('/webhook/login', (req, res) => {
   const { sube, pin } = req.body;
 
-  console.log(`[LOGIN] Sube: ${sube}, PIN: ${pin}`);
+  console.log(`[LOGIN] Şube: ${sube}, PIN: ${pin}`);
 
-  // Validate
   if (!sube || !pin) {
     return res.status(400).json({
       success: false,
@@ -63,8 +101,7 @@ app.post('/webhook/login', (req, res) => {
     });
   }
 
-  // Generate mock JWT
-  const mockToken = Buffer.from(JSON.stringify({
+  const token = Buffer.from(JSON.stringify({
     sube: sube,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + (12 * 60 * 60)
@@ -72,19 +109,192 @@ app.post('/webhook/login', (req, res) => {
 
   res.json({
     success: true,
-    token: `mock.${mockToken}.signature`,
+    token: `stok.${token}.sig`,
     sube: sube,
+    subeName: SUBE_NAMES[sube],
     expiresIn: '12h'
   });
 });
 
-// Voice recording endpoint
-app.post('/webhook/ses-kayit', upload.single('file'), (req, res) => {
-  const authHeader = req.headers.authorization;
-  const sube = req.body.sube;
-  const file = req.file;
+// OpenRouter GPT ile metin analizi
+async function analyzeTextWithGPT(text) {
+  try {
+    const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+      model: 'openai/gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: `Sen bir stok yönetim asistanısın. Kullanıcının konuşmasından ürün ve miktarları çıkar.
 
-  console.log(`[RECORDING] Sube: ${sube}, File: ${file ? file.size + ' bytes' : 'none'}`);
+Çıktı formatı JSON array: [{"urun": "Ürün Adı", "miktar": sayı, "birim": "birim", "action": "update"}]
+
+Kurallar:
+- Ürün adlarını Title Case yap (Domates, Salatalık, vb.)
+- Birim standartlaştır:
+  * kilo/kilogram → kg
+  * adet/tane → ad
+  * litre → lt
+  * gram → gr
+  * kasa/kutu → kasa
+  * çuval/torba → çuval
+  * paket → paket
+  * deste → deste
+- Özel birimleri AYNEN kullan: "kasa", "çuval", "paket", "deste"
+
+Action belirleme:
+- Normal ürün ekle/güncelle: {"action": "update"}
+- "[ürün] iptal", "[ürün] sil", "[ürün] yok": {"action": "delete", miktar ve birim gerekli değil}
+- "[ürün] [yeni miktar] olacaktı", "[ürün] [yeni miktar] değil": {"action": "update"}
+
+Örnekler:
+"iki kasa domates" → [{"urun": "Domates", "miktar": 2, "birim": "kasa", "action": "update"}]
+"limon iptal" → [{"urun": "Limon", "action": "delete"}]
+"patates 5 kasa olacaktı" → [{"urun": "Patates", "miktar": 5, "birim": "kasa", "action": "update"}]
+
+- Sadece JSON array döndür, başka açıklama yapma
+- Eğer miktar belirtilmediyse 1 kabul et
+- Eğer birim belirtilmediyse "ad" kullan`
+        },
+        {
+          role: 'user',
+          content: text
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 500
+    }, {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:3001',
+        'X-Title': 'Stok Yönetim Sistemi'
+      }
+    });
+
+    const result = response.data.choices[0].message.content.trim();
+    console.log('[GPT] Raw response:', result);
+
+    // JSON parse et
+    const products = JSON.parse(result);
+    return products;
+  } catch (error) {
+    console.error('[GPT] Error:', error.response?.data || error.message);
+    throw new Error('Metin analizi başarısız');
+  }
+}
+
+// Google Sheets'e ürün yaz, güncelle veya sil
+async function writeToSheets(sube, products) {
+  if (!sheetsClient) {
+    console.warn('[SHEETS] Google Sheets client not initialized, skipping write');
+    return;
+  }
+
+  try {
+    const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
+    const sheetName = process.env.GOOGLE_SHEET_NAME || 'Stok';
+
+    // Mevcut verileri oku
+    const readResponse = await sheetsClient.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A:I`
+    });
+
+    const rows = readResponse.data.values || [];
+    const header = rows[0] || [];
+    const dataRows = rows.slice(1);
+
+    const subeColumn = SUBE_COLUMNS[sube];
+    const timestamp = new Date().toLocaleString('tr-TR');
+
+    for (const product of products) {
+      const { urun, miktar, birim, action = 'update' } = product;
+
+      // Ürün var mı kontrol et
+      let rowIndex = -1;
+      for (let i = 0; i < dataRows.length; i++) {
+        if (dataRows[i][0] && dataRows[i][0].toLowerCase() === urun.toLowerCase()) {
+          rowIndex = i + 2; // +2 çünkü 1-indexed ve header var
+          break;
+        }
+      }
+
+      // Silme işlemi
+      if (action === 'delete') {
+        if (rowIndex > 0) {
+          // Sadece o şubenin verisini temizle (satırı silme)
+          await sheetsClient.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!${subeColumn}${rowIndex}`,
+            valueInputOption: 'RAW',
+            resource: { values: [['']] }
+          });
+          console.log(`[SHEETS] Deleted: ${urun} from ${SUBE_NAMES[sube]}`);
+        } else {
+          console.log(`[SHEETS] Skip delete: ${urun} not found`);
+        }
+        continue;
+      }
+
+      // Güncelleme veya ekleme
+      if (rowIndex > 0) {
+        // Güncelle
+        const range = `${sheetName}!${subeColumn}${rowIndex}`;
+        await sheetsClient.spreadsheets.values.update({
+          spreadsheetId,
+          range,
+          valueInputOption: 'RAW',
+          resource: { values: [[miktar]] }
+        });
+
+        // Birimi güncelle (H sütunu)
+        await sheetsClient.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${sheetName}!H${rowIndex}`,
+          valueInputOption: 'RAW',
+          resource: { values: [[birim]] }
+        });
+
+        // Timestamp güncelle (I sütunu)
+        await sheetsClient.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${sheetName}!I${rowIndex}`,
+          valueInputOption: 'RAW',
+          resource: { values: [[timestamp]] }
+        });
+
+        console.log(`[SHEETS] Updated: ${urun} → ${miktar} ${birim} (row ${rowIndex})`);
+      } else {
+        // Yeni satır ekle
+        const newRow = new Array(9).fill('');
+        newRow[0] = urun; // A: Ürün
+        newRow[SUBE_COLUMNS[sube].charCodeAt(0) - 65] = miktar; // Şube sütunu
+        newRow[7] = birim; // H: Birim
+        newRow[8] = timestamp; // I: Son Güncelleme
+
+        await sheetsClient.spreadsheets.values.append({
+          spreadsheetId,
+          range: `${sheetName}!A:I`,
+          valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',
+          resource: { values: [newRow] }
+        });
+
+        console.log(`[SHEETS] Added new row: ${urun} → ${miktar} ${birim}`);
+      }
+    }
+  } catch (error) {
+    console.error('[SHEETS] Error:', error.message);
+    throw new Error('Google Sheets yazma hatası');
+  }
+}
+
+// Metin işleme endpoint (Web Speech API'den gelecek)
+app.post('/webhook/process-text', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const { sube, text } = req.body;
+
+  console.log(`[TEXT] Şube: ${sube}, Text: "${text}"`);
 
   // Validate token
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -94,33 +304,91 @@ app.post('/webhook/ses-kayit', upload.single('file'), (req, res) => {
     });
   }
 
-  // Validate file
-  if (!file) {
+  if (!text || text.trim().length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Ses dosyası bulunamadı'
+      error: 'Metin boş olamaz'
     });
   }
 
-  // Simulate processing delay
-  setTimeout(() => {
-    // Mock product extraction
-    const mockProducts = [
-      { urun: 'Domates', miktar: 50, birim: 'kg' },
-      { urun: 'Salatalık', miktar: 30, birim: 'kg' },
-      { urun: 'Patlıcan', miktar: 20, birim: 'ad' }
-    ];
+  try {
+    // GPT ile analiz et
+    const products = await analyzeTextWithGPT(text);
 
-    console.log(`[SUCCESS] Extracted ${mockProducts.length} products`);
+    if (!products || products.length === 0) {
+      return res.json({
+        success: false,
+        error: 'Ürün bulunamadı. Lütfen "domates 5 kilo, salatalık 3 adet" formatında söyleyin.'
+      });
+    }
+
+    // Google Sheets'e yaz
+    await writeToSheets(sube, products);
 
     res.json({
       success: true,
-      message: `${mockProducts.length} ürün başarıyla kaydedildi`,
-      products: mockProducts,
-      timestamp: new Date().toISOString(),
-      note: 'Mock API - Gerçek AI işleme yapılmadı'
+      message: `${products.length} ürün başarıyla kaydedildi`,
+      products: products,
+      sube: SUBE_NAMES[sube],
+      timestamp: new Date().toISOString()
     });
-  }, 2000); // 2 saniye simüle edilmiş gecikme
+  } catch (error) {
+    console.error('[ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Sunucu hatası'
+    });
+  }
+});
+
+// Ses kayıt endpoint (backward compatibility için)
+app.post('/webhook/ses-kayit', upload.single('file'), async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const sube = req.body.sube;
+  const text = req.body.text; // Frontend'den metin gelirse
+
+  console.log(`[RECORDING] Şube: ${sube}, Text: "${text}"`);
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      error: 'Token bulunamadı'
+    });
+  }
+
+  if (!text) {
+    return res.status(400).json({
+      success: false,
+      error: 'Metin bulunamadı. Lütfen tarayıcınızın ses tanıma özelliğini kullanın.'
+    });
+  }
+
+  try {
+    const products = await analyzeTextWithGPT(text);
+
+    if (!products || products.length === 0) {
+      return res.json({
+        success: false,
+        error: 'Ürün bulunamadı'
+      });
+    }
+
+    await writeToSheets(sube, products);
+
+    res.json({
+      success: true,
+      message: `${products.length} ürün başarıyla kaydedildi`,
+      products: products,
+      sube: SUBE_NAMES[sube],
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[ERROR]', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Sunucu hatası'
+    });
+  }
 });
 
 // 404 handler
@@ -143,8 +411,13 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Mock API server running on port ${PORT}`);
+  console.log(`🚀 Stok API running on port ${PORT}`);
   console.log(`📍 Health: http://localhost:${PORT}/health`);
   console.log(`🔐 Login: http://localhost:${PORT}/webhook/login`);
+  console.log(`📝 Process Text: http://localhost:${PORT}/webhook/process-text`);
   console.log(`🎤 Recording: http://localhost:${PORT}/webhook/ses-kayit`);
+  console.log('');
+  console.log('🔧 Features:');
+  console.log(`  - OpenRouter GPT: ${process.env.OPENROUTER_API_KEY ? '✅' : '❌'}`);
+  console.log(`  - Google Sheets: ${sheetsClient ? '✅' : '❌'}`);
 });

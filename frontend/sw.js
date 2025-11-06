@@ -1,5 +1,5 @@
-const CACHE_NAME = 'stok-yonetim-v1.0.0';
-const RUNTIME_CACHE = 'stok-runtime-v1.0.0';
+const CACHE_NAME = 'stok-yonetim-v2.0.0-SIMPLE';
+const RUNTIME_CACHE = 'stok-runtime-v2.0.0-SIMPLE';
 
 const STATIC_ASSETS = [
   '/',

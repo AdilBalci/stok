@@ -7,7 +7,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/png" href="/icon-192.png">
   <title>Stok Kaydı - Market Yönetim Sistemi</title>
-  <link rel="stylesheet" href="styles-simple.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
@@ -34,22 +34,40 @@
       <div id="login-error" class="error"></div>
     </div>
 
-    <!-- Recording Screen - SIMPLE -->
+    <!-- Recording Screen -->
     <div id="recording-screen" class="screen hidden">
-      <button id="mic-btn" class="mic-button">
-        <span class="mic-icon">🎤</span>
-      </button>
+      <div class="record-section">
+        <div id="timer" class="timer">00:00</div>
 
-      <div id="status" class="status-text">Başlamak için mikrofona dokunun</div>
+        <div class="controls">
+          <button id="record-btn" class="btn btn-record">
+            🎤 Kayda Başla
+          </button>
+          <button id="stop-btn" class="btn btn-stop" disabled>
+            ⏹️ Durdur
+          </button>
+        </div>
 
-      <div id="live-products" class="live-products">
-        <!-- Ürünler buraya gelecek -->
+        <div id="status" class="status"></div>
+
+        <div class="instructions">
+          💡 <strong>Nasıl kullanılır?</strong><br>
+          Örnek: "Domates 50 kilo, salatalık 30 kilo, patlıcan 20 adet"
+        </div>
+      </div>
+
+      <div id="results" class="results hidden">
+        <h3>✅ Kaydedilen Ürünler</h3>
+        <div id="results-list"></div>
+        <button id="new-record-btn" class="btn btn-secondary">
+          🔄 Yeni Kayıt
+        </button>
       </div>
 
       <button id="logout-btn" class="btn-logout">Çıkış</button>
     </div>
   </div>
 
-  <script src="app-simple.js"></script>
+  <script src="app-speech.js"></script>
 </body>
 </html>
