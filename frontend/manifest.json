@@ -1,0 +1,61 @@
+{
+  "name": "Market Stok Yönetim Sistemi",
+  "short_name": "Stok Yönetimi",
+  "description": "Sesli stok giriş ve takip sistemi - 6 Şube",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#667eea",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "tr",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-login.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "label": "Giriş Ekranı"
+    },
+    {
+      "src": "/screenshot-record.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "label": "Kayıt Ekranı"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Yeni Kayıt",
+      "short_name": "Kayıt",
+      "description": "Hızlı stok kaydı yap",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded"
+  }
+}

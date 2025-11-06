@@ -1,0 +1,426 @@
+{
+  "name": "Stok Kaydı - Ses İşleme",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ses-kayit",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "id": "webhook-ses-kayit",
+      "name": "Webhook - Ses Kaydı",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "ses-kayit-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// JWT Token doğrulama\nconst crypto = require('crypto');\n\nconst authHeader = $input.item.json.headers.authorization;\n\nif (!authHeader || !authHeader.startsWith('Bearer ')) {\n  throw new Error('Token bulunamadı');\n}\n\nconst token = authHeader.substring(7);\nconst secret = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET_KEY_IN_PRODUCTION';\n\ntry {\n  // Token'ı parse et\n  const parts = token.split('.');\n  if (parts.length !== 3) {\n    throw new Error('Geçersiz token formatı');\n  }\n\n  const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());\n\n  // Token süresini kontrol et\n  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {\n    throw new Error('Token süresi dolmuş');\n  }\n\n  // Token signature'ı doğrula\n  const header = parts[0];\n  const payloadStr = parts[1];\n  const signature = parts[2];\n\n  const expectedSignature = crypto.createHmac('sha256', secret)\n    .update(`${header}.${payloadStr}`)\n    .digest('base64');\n\n  if (signature !== expectedSignature) {\n    throw new Error('Geçersiz token signature');\n  }\n\n  return {\n    json: {\n      sube: payload.sube,\n      authenticated: true,\n      binary: $input.item.binary\n    }\n  };\n} catch (error) {\n  throw new Error('Token doğrulama hatası: ' + error.message);\n}"
+      },
+      "id": "code-jwt-verify",
+      "name": "JWT Verification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {
+          "language": "tr",
+          "temperature": 0.3,
+          "responseFormat": "json"
+        }
+      },
+      "id": "openai-whisper",
+      "name": "OpenAI Whisper - Transcribe",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.text }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.text.length }}",
+              "operation": "larger",
+              "value2": 5
+            }
+          ]
+        }
+      },
+      "id": "if-transcript-valid",
+      "name": "Transkript Geçerli mi?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "message",
+        "modelId": "gpt-3.5-turbo",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Sen bir ürün ve miktar çıkarma asistanısın. Verilen Türkçe metinden ürün adlarını, miktarları ve birimlerini çıkar.\\n\\nSADECE aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:\\n\\n[\\n  {\"urun\": \"string\", \"miktar\": number, \"birim\": \"string\"}\\n]\\n\\nKurallar:\\n1. Ürün adlarını Büyük Harfle Başlat (Title Case)\\n2. Birim standartlaştır: \"kilo\"→\"kg\", \"kilogram\"→\"kg\", \"adet\"→\"ad\", \"litre\"→\"lt\"\\n3. Birim belirtilmemişse \"ad\" kullan\\n4. Sadece geçerli gıda ürünlerini çıkar\\n5. Miktar sayısal değer olmalı\\n6. Kesinlikle sadece JSON array döndür, başka açıklama ekleme\\n\\nÖrnekler:\\nGirdi: \"domates 50 kilo salatalık 30\"\\nÇıktı: [{\"urun\": \"Domates\", \"miktar\": 50, \"birim\": \"kg\"}, {\"urun\": \"Salatalık\", \"miktar\": 30, \"birim\": \"ad\"}]"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 500
+        }
+      },
+      "id": "openai-llm",
+      "name": "OpenAI LLM - Ürün Çıkarma",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM çıktısını parse et ve temizle\nlet text = $json.message?.content || $json.output || $json.text || '';\n\n// Markdown kod bloklarını temizle\ntext = text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n\n// Parse JSON\nlet products;\ntry {\n  products = JSON.parse(text);\n} catch (e) {\n  // Eğer parse edilemezse, JSON array olarak wrap et\n  try {\n    const singleProduct = JSON.parse(text);\n    products = [singleProduct];\n  } catch (e2) {\n    console.error('JSON parse hatası:', text);\n    throw new Error('Ürün bilgisi çıkarılamadı');\n  }\n}\n\n// Array değilse array yap\nif (!Array.isArray(products)) {\n  products = [products];\n}\n\n// Şube ve timestamp bilgilerini ekle\nconst sube = $('JWT Verification').item.json.sube;\nconst timestamp = new Date();\nconst tarih = timestamp.toISOString().split('T')[0]; // YYYY-MM-DD\n\n// Her ürün için ayrı item oluştur\nreturn products.map(p => ({\n  json: {\n    urun: p.urun || p.product || '',\n    miktar: parseFloat(p.miktar || p.quantity || 0),\n    birim: p.birim || p.unit || 'ad',\n    sube: sube,\n    tarih: tarih,\n    timestamp: timestamp.toISOString()\n  }\n}));"
+      },
+      "id": "code-parse-products",
+      "name": "Parse & Clean Products",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "mode": "splitItems",
+        "options": {}
+      },
+      "id": "split-products",
+      "name": "Split Products",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.miktar }}",
+              "operation": "larger",
+              "value2": 0
+            },
+            {
+              "value1": "={{ $json.miktar }}",
+              "operation": "smaller",
+              "value2": 10000
+            }
+          ],
+          "string": [
+            {
+              "value1": "={{ $json.urun }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-valid-product",
+      "name": "Ürün Geçerli mi?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Şubeye göre column mapping\nconst columnMap = {\n  'merkez': 'B',\n  'sube-kadikoy': 'C',\n  'sube-besiktas': 'D',\n  'sube-sisli': 'E',\n  'sube-uskudar': 'F',\n  'sube-bakirkoy': 'G'\n};\n\nconst sube = $json.sube;\nconst column = columnMap[sube] || 'B';\n\nreturn {\n  json: {\n    ...$json,\n    column: column\n  }\n};"
+      },
+      "id": "code-column-mapping",
+      "name": "Column Mapping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 150]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Stok",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "A": "={{ $json.urun }}",
+            "{{ $json.column }}": "={{ $json.miktar }}",
+            "H": "={{ $json.tarih }}"
+          }
+        },
+        "options": {
+          "columnToMatchOn": "A"
+        }
+      },
+      "id": "google-sheets-append",
+      "name": "Google Sheets - Write",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2050, 150],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tüm sonuçları topla ve response formatla\nconst items = $input.all();\n\nconst products = items.map(item => ({\n  urun: item.json.urun,\n  miktar: item.json.miktar,\n  birim: item.json.birim\n}));\n\nreturn {\n  json: {\n    success: true,\n    message: `${products.length} ürün başarıyla kaydedildi`,\n    products: products,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "code-format-response",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-success",
+      "name": "Respond - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2650, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Error response formatter\nconst error = $input.item.error || $json.error || {};\nconst errorMessage = error.message || 'Bilinmeyen hata oluştu';\n\nreturn {\n  json: {\n    success: false,\n    error: errorMessage,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "code-format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-error",
+      "name": "Respond - Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2650, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Ses Kaydı": {
+      "main": [
+        [
+          {
+            "node": "JWT Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JWT Verification": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Whisper - Transcribe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Whisper - Transcribe": {
+      "main": [
+        [
+          {
+            "node": "Transkript Geçerli mi?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transkript Geçerli mi?": {
+      "main": [
+        [
+          {
+            "node": "OpenAI LLM - Ürün Çıkarma",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI LLM - Ürün Çıkarma": {
+      "main": [
+        [
+          {
+            "node": "Parse & Clean Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Clean Products": {
+      "main": [
+        [
+          {
+            "node": "Split Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Products": {
+      "main": [
+        [
+          {
+            "node": "Ürün Geçerli mi?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ürün Geçerli mi?": {
+      "main": [
+        [
+          {
+            "node": "Column Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Column Mapping": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Write": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

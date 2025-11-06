@@ -1,0 +1,116 @@
+{
+  "name": "Login - PIN Doğrulama",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "login",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-login",
+      "name": "Webhook - Login",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "login-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Şube PIN'leri (production'da environment variable veya database'den alınmalı)\nconst PINS = {\n  'merkez': '123456',\n  'sube-kadikoy': '234567',\n  'sube-besiktas': '345678',\n  'sube-sisli': '456789',\n  'sube-uskudar': '567890',\n  'sube-bakirkoy': '678901'\n};\n\nconst body = $input.item.json.body;\nconst sube = body.sube;\nconst pin = body.pin;\n\n// Validation\nif (!sube || !pin) {\n  throw new Error('Şube ve PIN gereklidir');\n}\n\nif (!PINS[sube]) {\n  throw new Error('Geçersiz şube');\n}\n\nif (PINS[sube] !== pin) {\n  throw new Error('Hatalı PIN');\n}\n\nreturn {\n  json: {\n    sube: sube,\n    valid: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "code-pin-validation",
+      "name": "PIN Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// JWT oluşturma\n// Not: Production'da jsonwebtoken paketi kullanılmalı\n// Bu basitleştirilmiş bir token oluşturma örneğidir\n\nconst crypto = require('crypto');\n\nconst sube = $json.sube;\nconst secret = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET_KEY_IN_PRODUCTION';\n\n// Payload\nconst payload = {\n  sube: sube,\n  iat: Math.floor(Date.now() / 1000),\n  exp: Math.floor(Date.now() / 1000) + (12 * 60 * 60) // 12 saat\n};\n\n// Basit token oluşturma (production'da jwt.sign kullanın)\nconst header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64');\nconst payloadStr = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst signature = crypto.createHmac('sha256', secret)\n  .update(`${header}.${payloadStr}`)\n  .digest('base64');\n\nconst token = `${header}.${payloadStr}.${signature}`;\n\nreturn {\n  json: {\n    success: true,\n    token: token,\n    sube: sube,\n    expiresIn: '12h'\n  }\n};"
+      },
+      "id": "code-jwt-generation",
+      "name": "JWT Generation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 401,
+        "responseBody": "={{ { \"success\": false, \"error\": $json.error || \"Giriş başarısız\" } }}",
+        "options": {}
+      },
+      "id": "respond-error",
+      "name": "Respond - Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [650, 500]
+    }
+  ],
+  "connections": {
+    "Webhook - Login": {
+      "main": [
+        [
+          {
+            "node": "PIN Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PIN Validation": {
+      "main": [
+        [
+          {
+            "node": "JWT Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JWT Generation": {
+      "main": [
+        [
+          {
+            "node": "Respond - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#667eea">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/icon-192.png">
+  <title>Stok Kaydı - Market Yönetim Sistemi</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛒 Stok Kaydı</h1>
+      <p id="user-info">Şube: <span id="sube-name">-</span></p>
+    </header>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen">
+      <h2>Giriş Yap</h2>
+      <select id="sube-select" class="input">
+        <option value="">Şube Seçin...</option>
+        <option value="merkez">Merkez Şube</option>
+        <option value="sube-kadikoy">Kadıköy Şubesi</option>
+        <option value="sube-besiktas">Beşiktaş Şubesi</option>
+        <option value="sube-sisli">Şişli Şubesi</option>
+        <option value="sube-uskudar">Üsküdar Şubesi</option>
+        <option value="sube-bakirkoy">Bakırköy Şubesi</option>
+      </select>
+      <input type="password" id="pin-input" placeholder="PIN (6 haneli)"
+             maxlength="6" class="input" inputmode="numeric" pattern="[0-9]*">
+      <button id="login-btn" class="btn btn-primary">Giriş Yap</button>
+      <div id="login-error" class="error"></div>
+    </div>
+
+    <!-- Recording Screen -->
+    <div id="recording-screen" class="screen hidden">
+      <div class="record-section">
+        <div id="timer" class="timer">00:00</div>
+
+        <div class="controls">
+          <button id="record-btn" class="btn btn-record">
+            🎤 Kayda Başla
+          </button>
+          <button id="stop-btn" class="btn btn-stop" disabled>
+            ⏹️ Durdur
+          </button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="instructions">
+          💡 <strong>Nasıl kullanılır?</strong><br>
+          Örnek: "Domates 50 kilo, salatalık 30 kilo, patlıcan 20 adet"
+        </div>
+      </div>
+
+      <div id="results" class="results hidden">
+        <h3>✅ Kaydedilen Ürünler</h3>
+        <div id="results-list"></div>
+        <button id="new-record-btn" class="btn btn-secondary">
+          🔄 Yeni Kayıt
+        </button>
+      </div>
+
+      <button id="logout-btn" class="btn-logout">Çıkış</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
