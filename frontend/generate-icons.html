@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>PWA Icon Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #667eea;
+    }
+    .preview {
+      display: flex;
+      gap: 30px;
+      margin: 30px 0;
+      align-items: center;
+    }
+    .icon-preview {
+      text-align: center;
+    }
+    .icon-preview img {
+      border: 2px solid #ddd;
+      border-radius: 10px;
+    }
+    .icon-preview p {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+    .instructions {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    .instructions h3 {
+      margin-top: 0;
+    }
+    .instructions ol {
+      line-height: 1.8;
+    }
+    .note {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    canvas {
+      display: none;
+    }
+    .download-section {
+      margin-top: 30px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .btn:hover {
+      background: #5568d3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 PWA Icon Generator</h1>
+
+    <p>Bu sayfa <code>icon.svg</code> dosyasından otomatik olarak PWA icon'larını oluşturur.</p>
+
+    <div class="preview">
+      <div class="icon-preview">
+        <img id="icon192" width="192" height="192" alt="192x192 icon">
+        <p><strong>icon-192.png</strong><br>192 × 192 piksel</p>
+      </div>
+      <div class="icon-preview">
+        <img id="icon512" width="192" height="192" alt="512x512 icon preview">
+        <p><strong>icon-512.png</strong><br>512 × 512 piksel</p>
+      </div>
+    </div>
+
+    <div class="download-section">
+      <button class="btn" onclick="downloadIcon(192)">📥 Download icon-192.png</button>
+      <button class="btn" onclick="downloadIcon(512)">📥 Download icon-512.png</button>
+      <button class="btn" onclick="downloadFavicon()">📥 Download favicon.ico</button>
+    </div>
+
+    <div class="note">
+      <strong>⚠️ Not:</strong> Icon'lar tarayıcınızda otomatik oluşturulur. Download butonlarına tıklayarak kaydedin ve <code>frontend/</code> klasörüne kopyalayın.
+    </div>
+
+    <div class="instructions">
+      <h3>📋 Manuel İyileştirme Önerileri</h3>
+      <ol>
+        <li><strong>Online Tool Kullanın:</strong>
+          <ul>
+            <li><a href="https://realfavicongenerator.net/" target="_blank">RealFaviconGenerator</a> - Tüm platformlar için</li>
+            <li><a href="https://www.pwabuilder.com/imageGenerator" target="_blank">PWA Builder</a> - PWA özel</li>
+          </ul>
+        </li>
+        <li><strong>Figma/Sketch ile Tasarlayın:</strong> Profesyonel görünüm için özel tasarım yapın</li>
+        <li><strong>Icon Kuralları:</strong>
+          <ul>
+            <li>Basit ve tanınabilir olmalı</li>
+            <li>%20 padding bırakın (kenarlardan)</li>
+            <li>Kontrast renkler kullanın</li>
+            <li>Mobilde küçük göründüğünde test edin</li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <canvas id="canvas192" width="192" height="192"></canvas>
+  <canvas id="canvas512" width="512" height="512"></canvas>
+
+  <script>
+    // SVG'yi yükle ve canvas'a çiz
+    function loadAndDrawSVG() {
+      fetch('icon.svg')
+        .then(response => response.text())
+        .then(svgText => {
+          const img = new Image();
+          const blob = new Blob([svgText], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+
+          img.onload = function() {
+            // 192x192
+            const canvas192 = document.getElementById('canvas192');
+            const ctx192 = canvas192.getContext('2d');
+            ctx192.drawImage(img, 0, 0, 192, 192);
+            document.getElementById('icon192').src = canvas192.toDataURL('image/png');
+
+            // 512x512
+            const canvas512 = document.getElementById('canvas512');
+            const ctx512 = canvas512.getContext('2d');
+            ctx512.drawImage(img, 0, 0, 512, 512);
+
+            // 512'yi preview için küçült
+            const previewCanvas = document.createElement('canvas');
+            previewCanvas.width = 192;
+            previewCanvas.height = 192;
+            const previewCtx = previewCanvas.getContext('2d');
+            previewCtx.drawImage(canvas512, 0, 0, 192, 192);
+            document.getElementById('icon512').src = previewCanvas.toDataURL('image/png');
+
+            URL.revokeObjectURL(url);
+          };
+
+          img.src = url;
+        })
+        .catch(error => {
+          console.error('SVG yükleme hatası:', error);
+          alert('SVG dosyası yüklenemedi. Lütfen icon.svg dosyasının mevcut olduğundan emin olun.');
+        });
+    }
+
+    function downloadIcon(size) {
+      const canvas = document.getElementById('canvas' + size);
+      const link = document.createElement('a');
+      link.download = 'icon-' + size + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function downloadFavicon() {
+      // Favicon için 32x32 oluştur
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+
+      const canvas512 = document.getElementById('canvas512');
+      ctx.drawImage(canvas512, 0, 0, 32, 32);
+
+      const link = document.createElement('a');
+      link.download = 'favicon.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      alert('favicon.png indirildi. Bunu favicon.ico olarak değiştirmek için:\n\n1. Online converter kullanın: https://convertico.com/\n2. favicon.png → favicon.ico\n3. frontend/ klasörüne kopyalayın');
+    }
+
+    // Sayfa yüklendiğinde SVG'yi çiz
+    window.addEventListener('load', loadAndDrawSVG);
+  </script>
+</body>
+</html>

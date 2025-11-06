@@ -1,0 +1,29 @@
+# Development overrides
+# Bu dosya docker-compose.yml üzerine eklenir (sadece development için)
+
+version: '3.8'
+
+services:
+  n8n:
+    environment:
+      # Development mode
+      - NODE_ENV=development
+      - N8N_LOG_LEVEL=debug
+
+      # Auto-restart workflows on change
+      - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+
+    # Hot reload için volume mount
+    volumes:
+      - ./n8n/workflows:/home/node/.n8n/workflows:rw
+
+  frontend:
+    # Development için live reload (opsiyonel)
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+
+  mock-api:
+    environment:
+      - DEBUG=*
+    # Nodemon ile auto-restart
+    command: npm run dev

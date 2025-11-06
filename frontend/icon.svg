@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="64" fill="#667eea"/>
+
+  <!-- Shopping cart icon -->
+  <g transform="translate(256, 256)">
+    <!-- Cart body -->
+    <path d="M -80 -60 L -60 20 L 60 20 L 80 -60 Z" fill="white" stroke="white" stroke-width="8"/>
+
+    <!-- Cart wheels -->
+    <circle cx="-40" cy="60" r="18" fill="white"/>
+    <circle cx="40" cy="60" r="18" fill="white"/>
+
+    <!-- Cart handle -->
+    <path d="M -100 -80 L -90 -60" stroke="white" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- Microphone icon (overlay) -->
+    <g transform="translate(0, -20)">
+      <rect x="-15" y="-30" width="30" height="45" rx="15" fill="#FFD700" opacity="0.9"/>
+      <rect x="-5" y="15" width="10" height="20" fill="#FFD700" opacity="0.9"/>
+      <path d="M -30 25 Q 0 40, 30 25" stroke="#FFD700" stroke-width="5" fill="none" opacity="0.9"/>
+    </g>
+  </g>
+
+  <!-- Text -->
+  <text x="256" y="420" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">
+    STOK
+  </text>
+</svg>
