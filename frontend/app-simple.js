@@ -215,12 +215,15 @@ function startRecording() {
     // Tüm metni birleştir
     allText = finalTranscript + interimTranscript;
 
+    // REAL-TIME: Konuşurken metni göster
+    updateStatus(`🎤 "${allText.trim()}"`);
+
     // Önceki timer'ı iptal et
     if (processTimer) {
       clearTimeout(processTimer);
     }
 
-    // 500ms sessizlik bekle, sonra tüm context'i işle (HIZLI)
+    // 200ms sessizlik bekle, sonra tüm context'i işle (ÇOK HIZLI)
     processTimer = setTimeout(() => {
       const textToProcess = allText.trim();
 
@@ -232,7 +235,7 @@ function startRecording() {
       }
 
       processTimer = null;
-    }, 500); // 500ms debounce - çok hızlı yanıt
+    }, 200); // 200ms debounce - ultra hızlı
   };
 
   recognition.onerror = (event) => {
