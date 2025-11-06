@@ -220,7 +220,7 @@ function startRecording() {
       clearTimeout(processTimer);
     }
 
-    // 2 saniye sessizlik bekle, sonra tüm context'i işle
+    // 500ms sessizlik bekle, sonra tüm context'i işle (HIZLI)
     processTimer = setTimeout(() => {
       const textToProcess = allText.trim();
 
@@ -232,7 +232,7 @@ function startRecording() {
       }
 
       processTimer = null;
-    }, 2000); // 2 saniye debounce
+    }, 500); // 500ms debounce - çok hızlı yanıt
   };
 
   recognition.onerror = (event) => {
