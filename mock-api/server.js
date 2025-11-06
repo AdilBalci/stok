@@ -116,7 +116,7 @@ app.post('/webhook/login', (req, res) => {
   });
 });
 
-// OpenRouter GPT ile metin analizi
+// OpenRouter GPT ile metin analizi - CONTEXT AWARE
 async function analyzeTextWithGPT(text) {
   try {
     const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
@@ -124,36 +124,46 @@ async function analyzeTextWithGPT(text) {
       messages: [
         {
           role: 'system',
-          content: `Sen bir stok yönetim asistanısın. Kullanıcının konuşmasından ürün ve miktarları çıkar.
+          content: `Sen bir stok yönetim asistanısın. Kullanıcının DEVAM EDEN konuşmasından ürün ve miktarları çıkar.
+
+ÖNEMLİ - CONTEXT KURALLARI:
+- Bu tek cümle DEĞİL, bir konuşmanın tamamıdır
+- Kullanıcı aynı üründen farklı özelliklerle bahsederse (örn: "çuval patates" vs "file patates"), bunlar FARKLI ürünlerdir
+- Ürün tanımlamasında birim/özellik önemlidir: "10 çuval patates" ile "5 file patates" AYRI ürünlerdir
+- Tüm konuşmadaki BÜTÜN ürünleri çıkar ve döndür
 
 Çıktı formatı JSON array: [{"urun": "Ürün Adı", "miktar": sayı, "birim": "birim", "action": "update"}]
 
-Kurallar:
+Ürün isimlendirme:
 - Ürün adlarını Title Case yap (Domates, Salatalık, vb.)
-- Birim standartlaştır:
-  * kilo/kilogram → kg
-  * adet/tane → ad
-  * litre → lt
-  * gram → gr
-  * kasa/kutu → kasa
-  * çuval/torba → çuval
-  * paket → paket
-  * deste → deste
-- Özel birimleri AYNEN kullan: "kasa", "çuval", "paket", "deste"
+- Eğer özel birim/paketleme türü varsa, ürün adına EKLE:
+  * "10 çuval patates" → {"urun": "Çuval Patates", "miktar": 10, "birim": "çuval"}
+  * "5 file patates" → {"urun": "File Patates", "miktar": 5, "birim": "ad"}
+  * "3 kasa domates" → {"urun": "Domates", "miktar": 3, "birim": "kasa"}
+
+Birim standartlaştırma:
+- kilo/kilogram → kg
+- adet/tane → ad
+- litre → lt
+- gram → gr
+- kasa/kutu → kasa
+- çuval/torba → çuval
+- file → ad
+- paket → paket
+- deste → deste
 
 Action belirleme:
 - Normal ürün ekle/güncelle: {"action": "update"}
-- "[ürün] iptal", "[ürün] sil", "[ürün] yok": {"action": "delete", miktar ve birim gerekli değil}
-- "[ürün] [yeni miktar] olacaktı", "[ürün] [yeni miktar] değil": {"action": "update"}
+- "[ürün] iptal", "[ürün] sil": {"action": "delete"}
 
 Örnekler:
-"iki kasa domates" → [{"urun": "Domates", "miktar": 2, "birim": "kasa", "action": "update"}]
-"limon iptal" → [{"urun": "Limon", "action": "delete"}]
-"patates 5 kasa olacaktı" → [{"urun": "Patates", "miktar": 5, "birim": "kasa", "action": "update"}]
+"iki kasa domates" → [{"urun": "Domates", "miktar": 2, "birim": "kasa"}]
+"10 çuval patates file patates 5 adet" → [{"urun": "Çuval Patates", "miktar": 10, "birim": "çuval"}, {"urun": "File Patates", "miktar": 5, "birim": "ad"}]
+"domates 5 kilo limon 10 kasa patates 3 çuval" → [{"urun": "Domates", "miktar": 5, "birim": "kg"}, {"urun": "Limon", "miktar": 10, "birim": "kasa"}, {"urun": "Patates", "miktar": 3, "birim": "çuval"}]
 
 - Sadece JSON array döndür, başka açıklama yapma
-- Eğer miktar belirtilmediyse 1 kabul et
-- Eğer birim belirtilmediyse "ad" kullan`
+- Miktar belirtilmediyse 1 kabul et
+- Birim belirtilmediyse "ad" kullan`
         },
         {
           role: 'user',
@@ -161,7 +171,7 @@ Action belirleme:
         }
       ],
       temperature: 0.3,
-      max_tokens: 500
+      max_tokens: 800
     }, {
       headers: {
         'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,

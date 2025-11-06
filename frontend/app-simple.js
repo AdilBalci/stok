@@ -11,7 +11,8 @@ let isListening = false;
 let currentSube = '';
 let liveProducts = new Map(); // urun -> {urun, miktar, birim}
 let allText = '';
-let processTimer = null; // Timer for processing interim results
+let processTimer = null; // Timer for processing with batch/debounce
+let lastProcessedText = ''; // Track what we've already processed
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
@@ -199,7 +200,6 @@ function startRecording() {
 
   recognition.onresult = (event) => {
     let interimTranscript = '';
-    let hasNewFinal = false;
 
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
@@ -207,40 +207,32 @@ function startRecording() {
       if (event.results[i].isFinal) {
         finalTranscript += transcript + ' ';
         console.log('✅ Final metin:', transcript);
-        hasNewFinal = true;
-
-        // Her final transcript'te hemen analiz et
-        processText(transcript);
       } else {
         interimTranscript += transcript;
       }
     }
 
-    // Eğer final sonuç geldiyse, timer'ı iptal et
-    if (hasNewFinal && processTimer) {
+    // Tüm metni birleştir
+    allText = finalTranscript + interimTranscript;
+
+    // Önceki timer'ı iptal et
+    if (processTimer) {
       clearTimeout(processTimer);
-      processTimer = null;
     }
 
-    // Eğer interim sonuç varsa ve timer yoksa, 1.5 saniye bekle
-    if (!hasNewFinal && interimTranscript.trim().length > 0) {
-      // Önceki timer'ı iptal et
-      if (processTimer) {
-        clearTimeout(processTimer);
+    // 2 saniye sessizlik bekle, sonra tüm context'i işle
+    processTimer = setTimeout(() => {
+      const textToProcess = allText.trim();
+
+      // Sadece yeni metin varsa işle
+      if (textToProcess.length > 0 && textToProcess !== lastProcessedText) {
+        console.log('📤 Context ile işleniyor:', textToProcess);
+        lastProcessedText = textToProcess;
+        processTextWithContext(textToProcess);
       }
 
-      // 1.5 saniye sonra interim'i final say
-      processTimer = setTimeout(() => {
-        if (interimTranscript.trim().length > 0) {
-          console.log('⚡ Interim hızlı işleniyor:', interimTranscript);
-          processText(interimTranscript);
-          finalTranscript += interimTranscript + ' ';
-        }
-        processTimer = null;
-      }, 1500);
-    }
-
-    allText = finalTranscript + interimTranscript;
+      processTimer = null;
+    }, 2000); // 2 saniye debounce
   };
 
   recognition.onerror = (event) => {
@@ -293,13 +285,16 @@ function stopRecording() {
   } else {
     updateStatus('Başlamak için mikrofona dokunun');
   }
+
+  // Reset processed text tracking
+  lastProcessedText = '';
 }
 
-// Process text with GPT
-async function processText(text) {
+// Process text with GPT - WITH FULL CONTEXT
+async function processTextWithContext(text) {
   if (!text || text.trim().length === 0) return;
 
-  console.log('📤 GPT ile analiz ediliyor:', text);
+  console.log('📤 GPT ile analiz ediliyor (Context dahil):', text);
 
   try {
     const token = localStorage.getItem('auth_token');
@@ -311,7 +306,7 @@ async function processText(text) {
       },
       body: JSON.stringify({
         sube: currentSube,
-        text: text,
+        text: text, // Tüm conversation context
         timestamp: new Date().toISOString()
       })
     });
@@ -406,6 +401,7 @@ async function saveToGoogleSheets() {
       setTimeout(() => {
         liveProducts.clear();
         allText = '';
+        lastProcessedText = '';
         renderLiveProducts();
         updateStatus('Başlamak için mikrofona dokunun');
       }, 3000);
