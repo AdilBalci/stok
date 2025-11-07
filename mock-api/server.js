@@ -120,7 +120,7 @@ app.post('/webhook/login', (req, res) => {
 async function analyzeTextWithGPT(text) {
   try {
     const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-      model: 'openai/gpt-3.5-turbo',
+      model: 'openai/gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -196,7 +196,7 @@ YANLIŞ Örnekler (BU ŞEKİLDE YAPMA!):
           content: text
         }
       ],
-      temperature: 0.3,
+      temperature: 0.1,
       max_tokens: 800
     }, {
       headers: {
