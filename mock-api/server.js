@@ -132,6 +132,12 @@ async function analyzeTextWithGPT(text) {
 - Ürün tanımlamasında birim/özellik önemlidir: "10 çuval patates" ile "5 file patates" AYRI ürünlerdir
 - Tüm konuşmadaki BÜTÜN ürünleri çıkar ve döndür
 
+ÖNEMLİ - NOKTALAMA ve CÜMLE PARÇALARI:
+- Noktalar (.) genellikle ayrı cümleler/düşüncelerdir
+- Bir birim/miktar ile ürün adı AYNI CÜMLE içinde olmalı
+- Farklı cümlelerdeki bilgileri BİRLEŞTİRME
+- Ses tanıma hataları olabilir - anlamsız kelimeleri IGNORE et
+
 Çıktı formatı JSON array: [{"urun": "Ürün Adı", "miktar": sayı, "birim": "birim", "action": "update"}]
 
 Ürün isimlendirme:
@@ -141,11 +147,11 @@ async function analyzeTextWithGPT(text) {
   * "5 file patates" → {"urun": "File Patates", "miktar": 5, "birim": "ad"}
   * "3 kasa domates" → {"urun": "Domates", "miktar": 3, "birim": "kasa"}
 
-ÖNEMLİ - GEÇERSİZ ÜRÜNLER:
+KRITIK - GEÇERSİZ ÜRÜNLER (JSON'a EKLEME!):
 - "file", "çuval", "kasa", "paket", "deste" gibi kelimeler TEK BAŞINA ürün DEĞİLDİR
-- Sadece "file 5 adet" veya "çuval 10" gibi anlamsız girdileri IGNORE et
-- Mutlaka ürün adı olmalı: "file patates", "çuval domates" gibi
-- Eğer ürün adı yoksa, o entry'yi JSON array'e EKLEME
+- Birim + miktar varsa ama ürün adı yoksa → IGNORE
+- Anlamsız/tanınmayan kelimeler (ses tanıma hataları) → IGNORE
+- Mutlaka GERÇEK bir ürün adı olmalı: "patates", "domates", "marul" gibi
 
 Birim standartlaştırma:
 - kilo/kilogram → kg
@@ -162,14 +168,28 @@ Action belirleme:
 - Normal ürün ekle/güncelle: {"action": "update"}
 - "[ürün] iptal", "[ürün] sil": {"action": "delete"}
 
-Örnekler:
+DOĞRU Örnekler:
 "iki kasa domates" → [{"urun": "Domates", "miktar": 2, "birim": "kasa"}]
 "10 çuval patates file patates 5 adet" → [{"urun": "Çuval Patates", "miktar": 10, "birim": "çuval"}, {"urun": "File Patates", "miktar": 5, "birim": "ad"}]
 "domates 5 kilo limon 10 kasa patates 3 çuval" → [{"urun": "Domates", "miktar": 5, "birim": "kg"}, {"urun": "Limon", "miktar": 10, "birim": "kasa"}, {"urun": "Patates", "miktar": 3, "birim": "çuval"}]
 
+YANLIŞ Örnekler (BU ŞEKİLDE YAPMA!):
+"5 file. Patates." → YANLIŞ: [{"urun": "File Patates"}] ❌
+                   → DOĞRU: [{"urun": "Patates", "miktar": 1, "birim": "ad"}] ✅
+                   → Neden: "5 file" ile "Patates" farklı cümleler, birleştirme!
+
+"3 çuval. Marul." → YANLIŞ: [{"urun": "Marul", "miktar": 3, "birim": "çuval"}] ❌
+                  → DOĞRU: [{"urun": "Marul", "miktar": 1, "birim": "ad"}] ✅
+                  → Neden: "3 çuval" ile "Marul" farklı cümleler, miktar taşıma!
+
+"5 file" → IGNORE ❌ (ürün adı yok, sadece birim var)
+"10 çuval" → IGNORE ❌ (ürün adı yok, sadece birim var)
+"5 ual patates" → IGNORE ❌ ("ual" anlamlı kelime değil, ses tanıma hatası)
+
 - Sadece JSON array döndür, başka açıklama yapma
 - Miktar belirtilmediyse 1 kabul et
-- Birim belirtilmediyse "ad" kullan`
+- Birim belirtilmediyse "ad" kullan
+- Şüpheli/anlamsız girdileri IGNORE et`
         },
         {
           role: 'user',
