@@ -141,6 +141,12 @@ async function analyzeTextWithGPT(text) {
   * "5 file patates" → {"urun": "File Patates", "miktar": 5, "birim": "ad"}
   * "3 kasa domates" → {"urun": "Domates", "miktar": 3, "birim": "kasa"}
 
+ÖNEMLİ - GEÇERSİZ ÜRÜNLER:
+- "file", "çuval", "kasa", "paket", "deste" gibi kelimeler TEK BAŞINA ürün DEĞİLDİR
+- Sadece "file 5 adet" veya "çuval 10" gibi anlamsız girdileri IGNORE et
+- Mutlaka ürün adı olmalı: "file patates", "çuval domates" gibi
+- Eğer ürün adı yoksa, o entry'yi JSON array'e EKLEME
+
 Birim standartlaştırma:
 - kilo/kilogram → kg
 - adet/tane → ad
