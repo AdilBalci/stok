@@ -126,11 +126,39 @@ async function analyzeTextWithGPT(text) {
           role: 'system',
           content: `Sen bir stok yönetim asistanısın. Kullanıcının DEVAM EDEN konuşmasından ürün ve miktarları çıkar.
 
+STRICT PARSING KURALLARI - ÇOK ÖNEMLİ:
+
+1. CÜMLE SINIRLARI ZORUNLU:
+   - Nokta (.) ve virgül (,) cümle ayırıcıdır
+   - Her cümle BAĞIMSIZ olarak değerlendirilir
+   - Cümleler arası bilgi taşıma YASAK
+   - "5 file. Patates." → "file" ve "Patates" AYRI cümlelerdir, BİRLEŞTİRME!
+
+2. TAM FORMAT ZORUNLULUĞU:
+   ✅ KABUL EDİLEN:
+      - "miktar + birim + ürün" → "5 kilo domates"
+      - "miktar + ürün" → "5 domates" (default birim: ad)
+      - "ürün" → "marul" (default miktar: 1, birim: ad)
+
+   ❌ IGNORE EDİLEN (JSON'a EKLEME!):
+      - "5 file" → ürün adı yok, IGNORE
+      - "3 çuval" → ürün adı yok, IGNORE
+      - "10 kasa" → ürün adı yok, IGNORE
+
+3. TAHMİN YASAK:
+   - Eksik bilgiyi önceki/sonraki cümleden TAMAMLAMA
+   - Belirsiz ifadeleri IGNORE et
+   - Her cümle kendi başına anlamlı olmalı
+
+4. STANDALONE BİRİM YASAĞI:
+   - "file", "çuval", "kasa", "paket", "deste" TEK BAŞINA ürün DEĞİLDİR
+   - Mutlaka ürün ismi gerekli: "file patates" ✅, "file" ❌
+
 ÖNEMLİ - CONTEXT KURALLARI:
 - Bu tek cümle DEĞİL, bir konuşmanın tamamıdır
 - Kullanıcı aynı üründen farklı özelliklerle bahsederse (örn: "çuval patates" vs "file patates"), bunlar FARKLI ürünlerdir
 - Ürün tanımlamasında birim/özellik önemlidir: "10 çuval patates" ile "5 file patates" AYRI ürünlerdir
-- Tüm konuşmadaki BÜTÜN ürünleri çıkar ve döndür
+- Tüm konuşmadaki BÜTÜN GEÇERLİ ürünleri çıkar ve döndür
 
 Çıktı formatı JSON array: [{"urun": "Ürün Adı", "miktar": sayı, "birim": "birim", "action": "update"}]
 
@@ -162,14 +190,17 @@ Action belirleme:
 - Normal ürün ekle/güncelle: {"action": "update"}
 - "[ürün] iptal", "[ürün] sil": {"action": "delete"}
 
-Örnekler:
+Örnekler (STRICT):
 "iki kasa domates" → [{"urun": "Domates", "miktar": 2, "birim": "kasa"}]
 "10 çuval patates file patates 5 adet" → [{"urun": "Çuval Patates", "miktar": 10, "birim": "çuval"}, {"urun": "File Patates", "miktar": 5, "birim": "ad"}]
-"domates 5 kilo limon 10 kasa patates 3 çuval" → [{"urun": "Domates", "miktar": 5, "birim": "kg"}, {"urun": "Limon", "miktar": 10, "birim": "kasa"}, {"urun": "Patates", "miktar": 3, "birim": "çuval"}]
+"5 file. Patates." → [{"urun": "Patates", "miktar": 1, "birim": "ad"}]  // "5 file" IGNORED (ürün yok)
+"Domates 5 kilo. 3 çuval." → [{"urun": "Domates", "miktar": 5, "birim": "kg"}]  // "3 çuval" IGNORED (ürün yok)
+"5 kasa domates 3 kilo marul" → [{"urun": "Domates", "miktar": 5, "birim": "kasa"}, {"urun": "Marul", "miktar": 3, "birim": "kg"}]
 
 - Sadece JSON array döndür, başka açıklama yapma
 - Miktar belirtilmediyse 1 kabul et
-- Birim belirtilmediyse "ad" kullan`
+- Birim belirtilmediyse "ad" kullan
+- Geçersiz ifadeleri (standalone birimler) JSON'a EKLEME`
         },
         {
           role: 'user',
