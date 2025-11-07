@@ -338,12 +338,12 @@ app.post('/webhook/process-text', async (req, res) => {
       });
     }
 
-    // Google Sheets'e yaz
-    await writeToSheets(sube, products);
+    // SADECE frontend'e döndür (Google Sheets'e YAZMA - quota aşımını önlemek için)
+    // Sheets kaydı stopRecording() -> saveToGoogleSheets() -> /webhook/ses-kayit ile yapılacak
 
     res.json({
       success: true,
-      message: `${products.length} ürün başarıyla kaydedildi`,
+      message: `${products.length} ürün analiz edildi`,
       products: products,
       sube: SUBE_NAMES[sube],
       timestamp: new Date().toISOString()
